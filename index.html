@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>小确幸盲盒 · 捏泡泡</title>
+<style>
+  :root{
+    --ink:#3a2b4d;
+    --ink-soft:#6d5f85;
+    --card:rgba(255,255,255,.86);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0;overflow:hidden}
+  body{
+    font-family:"PingFang SC","Microsoft YaHei","Hiragino Sans GB",system-ui,-apple-system,"Segoe UI",sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(1200px 800px at 20% 10%, #ffe6f2 0%, transparent 60%),
+      radial-gradient(1000px 700px at 85% 20%, #e2f0ff 0%, transparent 55%),
+      radial-gradient(900px 900px at 50% 110%, #fff3d9 0%, transparent 60%),
+      linear-gradient(160deg,#fdf6ff 0%,#eef4ff 55%,#f7f2ff 100%);
+    user-select:none;
+  }
+
+  /* ---------- 摄像头画面 ---------- */
+  #cam{
+    position:fixed;inset:0;width:100%;height:100%;
+    object-fit:cover;transform:scaleX(-1);
+    opacity:.34;filter:blur(1px) saturate(1.05);
+    z-index:0;
+  }
+  #vignette{
+    position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:
+      radial-gradient(120% 90% at 50% 45%, rgba(255,255,255,.10) 0%, rgba(58,43,77,.34) 100%),
+      linear-gradient(180deg, rgba(255,255,255,.35) 0%, transparent 30%, transparent 70%, rgba(58,43,77,.28) 100%);
+  }
+  #stage{position:fixed;inset:0;z-index:2}
+
+  /* ---------- HUD ---------- */
+  .hud{
+    position:fixed;z-index:5;
+    display:flex;align-items:center;gap:10px;
+    padding:9px 14px;border-radius:999px;
+    background:var(--card);
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    box-shadow:0 6px 20px rgba(58,43,77,.12), inset 0 1px 0 #fff;
+    font-size:13px;color:var(--ink-soft);
+  }
+  #hudLeft{left:18px;top:18px}
+  #hudRight{right:18px;top:18px;padding:6px 8px}
+  .dot{width:8px;height:8px;border-radius:50%;background:#ffb3c7;box-shadow:0 0 0 4px rgba(255,179,199,.25)}
+  .dot.on{background:#8fd6a8;box-shadow:0 0 0 4px rgba(143,214,168,.25)}
+  .dot.off{background:#d8d2e4;box-shadow:0 0 0 4px rgba(216,210,228,.25)}
+  .btn{
+    border:0;cursor:pointer;font:inherit;font-size:13px;color:var(--ink-soft);
+    background:rgba(255,255,255,.7);border-radius:999px;padding:7px 12px;
+    transition:.18s;box-shadow:0 3px 10px rgba(58,43,77,.08);
+  }
+  .btn:hover{background:#fff;color:var(--ink);transform:translateY(-1px)}
+  #count{font-weight:700;color:var(--ink)}
+
+  /* ---------- 底部提示 ---------- */
+  #tip{
+    position:fixed;left:50%;bottom:64px;transform:translateX(-50%);
+    z-index:5;text-align:center;font-size:14px;color:#fff;
+    text-shadow:0 2px 12px rgba(58,43,77,.45);
+    letter-spacing:.5px;transition:opacity .6s;
+  }
+  #tip b{color:#ffe9a8}
+
+  /* ---------- 收集条 ---------- */
+  #strip{
+    position:fixed;left:50%;bottom:16px;transform:translateX(-50%);
+    z-index:5;display:flex;gap:8px;align-items:center;
+    padding:8px 12px;border-radius:999px;
+    background:var(--card);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    box-shadow:0 6px 20px rgba(58,43,77,.12);
+    max-width:min(92vw,560px);min-height:44px;
+  }
+  #strip .empty{font-size:12px;color:#a79dbb;padding:0 6px}
+  #strip .ic{
+    width:30px;height:30px;border-radius:10px;background:#fff;
+    display:grid;place-items:center;box-shadow:0 2px 6px rgba(58,43,77,.14);
+    animation:pop .45s cubic-bezier(.2,1.5,.4,1) both;
+  }
+  #strip .ic svg{width:24px;height:24px}
+  @keyframes pop{from{transform:scale(.3);opacity:0}to{transform:scale(1);opacity:1}}
+
+  /* ---------- 抽到的卡片 ---------- */
+  #cards{position:fixed;inset:0;z-index:6;pointer-events:none}
+  .card{
+    position:absolute;width:230px;transform:translate(-50%,-50%);
+    background:var(--card);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+    border-radius:24px;padding:18px 16px 16px;text-align:center;
+    box-shadow:0 18px 40px rgba(58,43,77,.18), inset 0 1px 0 #fff;
+    animation:cardIn .5s cubic-bezier(.18,1.4,.4,1) both;
+  }
+  .card.out{animation:cardOut .7s ease forwards}
+  @keyframes cardIn{from{transform:translate(-50%,-50%) scale(.35);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+  @keyframes cardOut{to{transform:translate(-50%,-56%) scale(.92);opacity:0}}
+  .card .clay{width:104px;height:104px;margin:0 auto 8px;animation:float 2.6s ease-in-out infinite}
+  .card .clay svg{width:100%;height:100%;display:block;filter:drop-shadow(0 8px 12px rgba(58,43,77,.18))}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+  .card p{margin:0;font-size:15px;line-height:1.6;color:var(--ink)}
+  .card small{display:block;margin-top:8px;font-size:11px;color:#a79dbb;letter-spacing:1px}
+
+  /* ---------- 开场 ---------- */
+  #gate{
+    position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:24px;
+    background:radial-gradient(900px 700px at 50% 30%, rgba(255,255,255,.7), rgba(238,244,255,.92));
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  }
+  #gate .box{
+    width:min(92vw,480px);background:#fff;border-radius:28px;padding:30px 28px;
+    box-shadow:0 30px 60px rgba(58,43,77,.18);
+    animation:cardIn .5s cubic-bezier(.18,1.4,.4,1) both;
+  }
+  #gate h1{margin:0 0 6px;font-size:24px;letter-spacing:1px}
+  #gate .sub{margin:0 0 20px;font-size:13px;color:var(--ink-soft)}
+  ol{margin:0 0 22px;padding-left:20px;font-size:14px;line-height:2;color:var(--ink-soft)}
+  ol b{color:var(--ink)}
+  .go{
+    width:100%;border:0;cursor:pointer;font:inherit;font-size:16px;font-weight:700;color:#fff;
+    padding:15px;border-radius:16px;
+    background:linear-gradient(135deg,#ffb3c7,#b8a4ff);
+    box-shadow:0 10px 24px rgba(184,164,255,.45);
+    transition:.18s;
+  }
+  .go:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(184,164,255,.55)}
+  .ghost{
+    margin-top:10px;width:100%;border:0;cursor:pointer;font:inherit;font-size:13px;
+    color:var(--ink-soft);background:transparent;padding:8px;
+  }
+  .ghost:hover{color:var(--ink);text-decoration:underline}
+  #gate .err{margin-top:12px;font-size:12px;color:#e0525f;min-height:16px;text-align:center}
+</style>
+</head>
+<body>
+
+<video id="cam" playsinline muted></video>
+<div id="vignette"></div>
+<canvas id="stage"></canvas>
+
+<div class="hud" id="hudLeft">
+  <span class="dot off" id="dot"></span>
+  <span id="status">正在开启摄像头…</span>
+  <span>· 已抽到 <b id="count">0</b> 个</span>
+</div>
+
+<div class="hud" id="hudRight">
+  <button class="btn" id="soundBtn">🔊 声音</button>
+  <button class="btn" id="fullBtn">⛶ 全屏</button>
+</div>
+
+<div id="tip">拇指和食指 <b>一捏</b> → 戳破一个泡泡，抽一件今天的小事</div>
+<div id="strip"><span class="empty">今天的小确幸会排在这里</span></div>
+<div id="cards"></div>
+
+<div id="gate">
+  <div class="box">
+    <h1>🎁 今天的小确幸盲盒</h1>
+    <p class="sub">对着摄像头捏一捏，随机抽一件今天可以做的小事。</p>
+    <ol>
+      <li>屏幕上飘着几个<b>半透明彩色泡泡</b></li>
+      <li>伸出手，<b>拇指和食指</b>做出「捏」的动作</li>
+      <li>泡泡<b>啪</b>地碎成光点，蹦出一个小图标和一句话</li>
+      <li>几秒后泡泡重新飘出来，可以一直抽</li>
+    </ol>
+    <button class="go" id="startBtn">允许摄像头，开始玩</button>
+    <button class="ghost" id="mouseBtn">没有摄像头 / 想用鼠标点 → 点这里</button>
+    <div class="err" id="err"></div>
+  </div>
+</div>
+
+<!-- 粘土图标共用的渐变与滤镜 -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs id="clayDefs">
+    <filter id="clayShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="2.5" stdDeviation="2.5" flood-color="#4a3560" flood-opacity=".28"/>
+    </filter>
+    <clipPath id="donutClip">
+      <path d="M0 0 H100 V38 C88 52 78 32 64 42 C50 52 38 34 24 44 C14 51 6 44 0 48 Z"/>
+    </clipPath>
+  </defs>
+</svg>
+
+<script type="module">
+/* =========================================================
+   0. 小工具
+   ========================================================= */
+const $ = id => document.getElementById(id);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = arr => arr[(Math.random() * arr.length) | 0];
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+/* =========================================================
+   1. 粘土风图标（纯 SVG 手绘 + 柔光渐变）
+   ========================================================= */
+const defs = $('clayDefs');
+function cg(key, light, dark){
+  const id = 'g_' + key;
+  if (!defs.querySelector('#' + id)) {
+    defs.insertAdjacentHTML('beforeend',
+      `<radialGradient id="${id}" cx="34%" cy="26%" r="80%">
+         <stop offset="0%" stop-color="${light}"/><stop offset="100%" stop-color="${dark}"/>
+       </radialGradient>`);
+  }
+  return `url(#${id})`;
+}
+const glow = (o, rx, ry, cx, cy) =>
+  `<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="#fff" opacity="${o}"/>`;
+
+const ICONS = {
+  boba: `<g filter="url(#clayShadow)">
+    <path d="M60 14 L70 4 L82 16 L70 28 Z" fill="${cg('bobaStraw','#ffb3d1','#e8609a')}"/>
+    <path d="M30 34 h40 l-5 48 a9 9 0 0 1 -9 8 h-12 a9 9 0 0 1 -9 -8 z" fill="${cg('bobaCup','#fffaf2','#e6cfb7')}"/>
+    <rect x="25" y="23" width="50" height="14" rx="7" fill="${cg('bobaLid','#ffd6e6','#f2a0c2')}"/>
+    <circle cx="40" cy="76" r="5" fill="#7a4a34" opacity=".85"/>
+    <circle cx="53" cy="80" r="4.5" fill="#7a4a34" opacity=".85"/>
+    <circle cx="61" cy="72" r="4" fill="#7a4a34" opacity=".85"/>
+    ${glow(.35, 6, 15, 41, 52)}
+  </g>`,
+
+  pad: `<g filter="url(#clayShadow)">
+    <rect x="10" y="30" width="80" height="46" rx="20" fill="${cg('padBody','#d6e7ff','#8fb4ea')}"/>
+    <rect x="23" y="39" width="26" height="19" rx="6" fill="${cg('padScreen','#547cb0','#2f4a75')}"/>
+    <rect x="35" y="60" width="6" height="14" rx="3" fill="#f2f7ff"/>
+    <rect x="29" y="65" width="18" height="6" rx="3" fill="#f2f7ff"/>
+    <circle cx="70" cy="45" r="6" fill="${cg('padA','#ffb6a6','#f56a5a')}"/>
+    <circle cx="61" cy="60" r="6" fill="${cg('padB','#ffe9ae','#f3b93c')}"/>
+    ${glow(.22, 24, 5, 44, 36)}
+  </g>`,
+
+  book: `<g filter="url(#clayShadow)">
+    <rect x="16" y="20" width="68" height="60" rx="10" fill="${cg('bookCover','#b3ebd2','#5fbf9c')}"/>
+    <rect x="26" y="24" width="52" height="52" rx="5" fill="${cg('bookPage','#ffffff','#e8e2f2')}"/>
+    <rect x="16" y="20" width="11" height="60" rx="5" fill="${cg('bookSpine','#86d9ba','#3f9c7c')}"/>
+    <path d="M60 20 v23 l6 -6 l6 6 v-23 z" fill="${cg('bookMark','#ffb3d1','#e8609a')}"/>
+    <g stroke="#d5cee4" stroke-width="3" stroke-linecap="round">
+      <path d="M36 40 h26"/><path d="M36 50 h26"/><path d="M36 60 h17"/>
+    </g>
+  </g>`,
+
+  coffee: `<g filter="url(#clayShadow)">
+    <path d="M26 34 h44 l-5 34 a10 10 0 0 1 -10 8 h-14 a10 10 0 0 1 -10 -8 z" fill="${cg('cupBody','#ffffff','#ded6ea')}"/>
+    <rect x="21" y="25" width="54" height="12" rx="6" fill="${cg('cupTop','#ffdcb8','#e79b5e')}"/>
+    <path d="M69 42 a11 11 0 0 1 0 20" fill="none" stroke="${cg('cupHand','#ffffff','#d9d0e6')}" stroke-width="9" stroke-linecap="round"/>
+    <ellipse cx="48" cy="82" rx="30" ry="6" fill="${cg('saucer','#e7e0f0','#b9aecd')}"/>
+    <g stroke="#fff" stroke-width="4" stroke-linecap="round" fill="none" opacity=".75">
+      <path d="M40 20 c5 -5 -5 -8 0 -13"/><path d="M56 20 c5 -5 -5 -8 0 -13"/>
+    </g>
+  </g>`,
+
+  cake: `<g filter="url(#clayShadow)">
+    <rect x="20" y="64" width="60" height="16" rx="6" fill="${cg('cakeA','#ffdcae','#e5a566')}"/>
+    <rect x="20" y="50" width="60" height="14" rx="5" fill="${cg('cakeB','#fff5f1','#f0cfc6')}"/>
+    <rect x="20" y="36" width="60" height="14" rx="5" fill="${cg('cakeC','#ffcb93','#dd9450')}"/>
+    <circle cx="50" cy="27" r="10" fill="${cg('cherry','#ffa8ae','#e0525f')}"/>
+    <path d="M50 17 v-7" stroke="#6bbf59" stroke-width="4" stroke-linecap="round"/>
+    ${glow(.4, 9, 4, 35, 43)}
+  </g>`,
+
+  cat: `<g filter="url(#clayShadow)">
+    <path d="M28 44 L24 22 L44 32 Z" fill="${cg('catEar','#ffdcb0','#e8a86b')}"/>
+    <path d="M72 44 L76 22 L56 32 Z" fill="${cg('catEar','#ffdcb0','#e8a86b')}"/>
+    <circle cx="50" cy="53" r="28" fill="${cg('catHead','#ffe6c2','#eab173')}"/>
+    <circle cx="40" cy="49" r="4" fill="#4a3628"/><circle cx="60" cy="49" r="4" fill="#4a3628"/>
+    <path d="M46 61 q4 5 8 0" stroke="#4a3628" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <circle cx="31" cy="59" r="5" fill="#ff9db0" opacity=".55"/>
+    <circle cx="69" cy="59" r="5" fill="#ff9db0" opacity=".55"/>
+    ${glow(.28, 13, 6, 41, 37)}
+  </g>`,
+
+  flower: `<g filter="url(#clayShadow)">
+    ${[0,72,144,216,288].map(a =>
+      `<ellipse cx="50" cy="28" rx="14" ry="20" fill="${cg('petal','#ffc9e0','#ef7fae')}" transform="rotate(${a} 50 50)"/>`
+    ).join('')}
+    <circle cx="50" cy="50" r="13" fill="${cg('core','#ffeab0','#f0b542')}"/>
+    ${glow(.3, 5, 3, 46, 46)}
+  </g>`,
+
+  headphone: `<g filter="url(#clayShadow)">
+    <path d="M18 58 v-8 a32 32 0 0 1 64 0 v8" fill="none" stroke="${cg('hpBand','#c3ceff','#7f8fe0')}" stroke-width="11" stroke-linecap="round"/>
+    <rect x="7" y="50" width="23" height="33" rx="11" fill="${cg('hpCup','#dce4ff','#97a6ee')}"/>
+    <rect x="70" y="50" width="23" height="33" rx="11" fill="${cg('hpCup','#dce4ff','#97a6ee')}"/>
+    ${glow(.3, 5, 9, 18, 60)}
+  </g>`,
+
+  shoe: `<g filter="url(#clayShadow)">
+    <path d="M14 68 c0 -11 6 -13 13 -15 l10 8 l8 -11 l15 7 c14 6 22 14 22 22 v6 a6 6 0 0 1 -6 6 h-56 a6 6 0 0 1 -6 -6 z"
+          fill="${cg('shoeBody','#d5ecff','#7fb6e8')}"/>
+    <rect x="12" y="75" width="76" height="10" rx="5" fill="${cg('shoeSole','#ffffff','#d5e4f1')}"/>
+    <g stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M38 55 l11 9"/><path d="M45 50 l11 9"/></g>
+  </g>`,
+
+  bath: `<g filter="url(#clayShadow)">
+    <path d="M14 48 h64 v12 a16 16 0 0 1 -16 16 h-32 a16 16 0 0 1 -16 -16 z" fill="${cg('tub','#eef7ff','#b6d9f2')}"/>
+    <rect x="8" y="38" width="76" height="11" rx="5.5" fill="${cg('tubRim','#ffffff','#cfe6f5')}"/>
+    <path d="M22 76 v8 a5 5 0 0 0 10 0 v-8 z" fill="#b6d9f2"/>
+    <path d="M56 76 v8 a5 5 0 0 0 10 0 v-8 z" fill="#b6d9f2"/>
+    <circle cx="30" cy="33" r="7" fill="#fff" opacity=".85"/>
+    <circle cx="47" cy="28" r="9" fill="#fff" opacity=".85"/>
+    <circle cx="64" cy="34" r="6" fill="#fff" opacity=".85"/>
+    <path d="M78 38 v-16 h-11" stroke="#9ec5dd" stroke-width="6" fill="none" stroke-linecap="round"/>
+  </g>`,
+
+  star: `<g filter="url(#clayShadow)">
+    <path d="M50 12 l11 24 l26 3 l-19 18 l5 26 l-23 -13 l-23 13 l5 -26 l-19 -18 l26 -3 z"
+          fill="${cg('star','#ffeaa0','#f3b93c')}" stroke="#f0b542" stroke-width="6" stroke-linejoin="round"/>
+    ${glow(.45, 8, 5, 42, 34)}
+  </g>`,
+
+  donut: `<g filter="url(#clayShadow)">
+    <path d="M50 8 a42 42 0 1 0 0 84 a42 42 0 1 0 0 -84 z M50 34 a16 16 0 1 1 0 32 a16 16 0 1 1 0 -32 z"
+          fill-rule="evenodd" fill="${cg('donut','#ffdda6','#e0a05c')}"/>
+    <g clip-path="url(#donutClip)">
+      <path d="M50 8 a42 42 0 1 0 0 84 a42 42 0 1 0 0 -84 z M50 34 a16 16 0 1 1 0 32 a16 16 0 1 1 0 -32 z"
+            fill-rule="evenodd" fill="${cg('icing','#ffc2dd','#ef7fae')}"/>
+      <g stroke-linecap="round" stroke-width="4">
+        <path d="M26 26 l6 -6" stroke="#8fd6a8"/><path d="M50 18 l7 2" stroke="#ffe9a8"/>
+        <path d="M72 26 l-5 -7" stroke="#8fb8ff"/><path d="M18 44 l7 1" stroke="#ff9aa2"/>
+        <path d="M80 44 l-6 4" stroke="#b8a4ff"/><path d="M60 40 l6 5" stroke="#8fd6a8"/>
+      </g>
+    </g>
+  </g>`,
+
+  palette: `<g filter="url(#clayShadow)">
+    <path d="M50 14 c22 0 38 14 38 32 c0 12 -8 11 -12 19 c-4 8 2 14 -6 16 c-8 2 -12 -6 -20 -4 c-19 4 -38 -10 -38 -31 c0 -18 16 -32 38 -32 z"
+          fill="${cg('pal','#ffe6c9','#e9b183')}"/>
+    <circle cx="36" cy="38" r="7" fill="#ff8f9e"/><circle cx="57" cy="32" r="7" fill="#ffd166"/>
+    <circle cx="72" cy="47" r="7" fill="#8fd6a8"/><circle cx="34" cy="59" r="6" fill="#8fb8ff"/>
+    ${glow(.25, 12, 5, 40, 28)}
+  </g>`,
+
+  camera: `<g filter="url(#clayShadow)">
+    <rect x="12" y="30" width="76" height="48" rx="13" fill="${cg('camBody','#e3eaf7','#a3b1d0')}"/>
+    <rect x="34" y="21" width="25" height="11" rx="4" fill="${cg('camTop','#c6d2ea','#8e9dc0')}"/>
+    <circle cx="50" cy="54" r="18" fill="${cg('camLens','#8e9dc0','#4c5878')}"/>
+    <circle cx="50" cy="54" r="10" fill="${cg('camGlass','#c8e8ff','#6aa8d8')}"/>
+    <circle cx="74" cy="40" r="4.5" fill="${cg('camFlash','#ffe9ae','#f3b93c')}"/>
+    ${glow(.4, 6, 4, 44, 47)}
+  </g>`
+};
+
+/* 盲盒内容：图标 + 一句温柔的话 */
+const ITEMS = [
+  { icon:'boba',      text:'今天去喝杯奶茶吧，三分糖也很甜。' },
+  { icon:'pad',       text:'今天打一局游戏吧，输赢都算数。' },
+  { icon:'book',      text:'今天读十页书吧，困了就合上。' },
+  { icon:'coffee',    text:'今天慢慢喝完一杯咖啡吧，别急着做事。' },
+  { icon:'cake',      text:'今天吃块小蛋糕吧，热量先欠着。' },
+  { icon:'cat',       text:'今天去摸一摸猫吧，路上遇到的也算。' },
+  { icon:'flower',    text:'今天买一支花吧，插在杯子里就好。' },
+  { icon:'headphone', text:'今天听一首老歌吧，把它听完。' },
+  { icon:'shoe',      text:'今天出门走十分钟吧，不赶时间。' },
+  { icon:'bath',      text:'今晚泡个热水澡吧，手机留在客厅。' },
+  { icon:'star',      text:'今天早点睡吧，星星替你守夜。' },
+  { icon:'donut',     text:'今天奖励自己一个甜甜圈吧。' },
+  { icon:'palette',   text:'今天随手画点什么吧，丑也没关系。' },
+  { icon:'camera',    text:'今天拍一张照片吧，什么都行。' }
+];
+
+const svgOf = k => `<svg viewBox="0 0 100 100">${ICONS[k]}</svg>`;
+
+/* =========================================================
+   2. 画布 / 泡泡 / 粒子
+   ========================================================= */
+const cv = $('stage'), ctx = cv.getContext('2d');
+let W = 0, H = 0;
+function resize(){
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', resize); resize();
+
+const BUBBLE_N = 5;
+const bubbles = [];
+function newBubble(){
+  return {
+    x: rnd(90, W - 90), y: rnd(120, H - 140),
+    r: rnd(38, 58),
+    vx: rnd(-16, 16) || 8, vy: rnd(-14, 14) || -6,
+    hue: pick([340, 300, 265, 210, 175, 40, 20]),
+    born: performance.now(),
+    dead: false, respawn: 0
+  };
+}
+for (let i = 0; i < BUBBLE_N; i++) bubbles.push(newBubble());
+
+const parts = [];
+function burst(x, y, hue){
+  for (let i = 0; i < 26; i++){
+    const a = rnd(0, Math.PI * 2), s = rnd(60, 300);
+    parts.push({
+      x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 40,
+      life: 1, r: rnd(2, 6), hue: hue + rnd(-30, 30)
+    });
+  }
+}
+
+function update(dt, now){
+  for (const b of bubbles){
+    if (b.dead){
+      if (now >= b.respawn){
+        Object.assign(b, newBubble());
+        b.born = now;
+      }
+      continue;
+    }
+    b.x += b.vx * dt; b.y += b.vy * dt;
+    if (b.x < b.r || b.x > W - b.r){ b.vx *= -1; b.x = clamp(b.x, b.r, W - b.r); }
+    if (b.y < 90 + b.r || b.y > H - 110 - b.r){ b.vy *= -1; b.y = clamp(b.y, 90 + b.r, H - 110 - b.r); }
+  }
+  for (let i = parts.length - 1; i >= 0; i--){
+    const p = parts[i];
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.vy += 380 * dt; p.vx *= .98;
+    p.life -= dt * 1.15;
+    if (p.life <= 0) parts.splice(i, 1);
+  }
+}
+
+function draw(now){
+  ctx.clearRect(0, 0, W, H);
+
+  // 泡泡
+  for (const b of bubbles){
+    if (b.dead) continue;
+    const grow = clamp((now - b.born) / 450, 0, 1);
+    const r = b.r * (0.2 + 0.8 * (1 - Math.pow(1 - grow, 3))) * (1 + 0.035 * Math.sin(now / 420 + b.x));
+    const g = ctx.createRadialGradient(b.x - r * .3, b.y - r * .35, r * .08, b.x, b.y, r);
+    g.addColorStop(0,   `hsla(${b.hue},100%,90%,.55)`);
+    g.addColorStop(.65, `hsla(${b.hue},95%,78%,.20)`);
+    g.addColorStop(1,   `hsla(${b.hue},95%,72%,.42)`);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(b.x, b.y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = `hsla(${b.hue},100%,86%,.55)`; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.6)';
+    ctx.beginPath(); ctx.ellipse(b.x - r * .34, b.y - r * .4, r * .17, r * .11, -.6, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // 光点
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const p of parts){
+    ctx.globalAlpha = clamp(p.life, 0, 1);
+    ctx.fillStyle = `hsl(${p.hue},100%,72%)`;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+
+  // 手指指针
+  if (hand.tip){
+    const { x, y } = hand.tip;
+    const R = hand.pinching ? 13 : 26;
+    ctx.save();
+    ctx.strokeStyle = hand.pinching ? 'rgba(255,255,255,.95)' : 'rgba(255,255,255,.6)';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash(hand.pinching ? [] : [7, 7]);
+    ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.9)';
+    for (const f of [hand.thumb, hand.index]){
+      if (!f) continue;
+      ctx.beginPath(); ctx.arc(f.x, f.y, 5, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+/* =========================================================
+   3. 声音（WebAudio 合成，无需素材）
+   ========================================================= */
+let AC = null, muted = false;
+function ac(){ if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)(); return AC; }
+function sfxPop(){
+  if (muted) return;
+  const a = ac(), t = a.currentTime;
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(680, t); o.frequency.exponentialRampToValueAtTime(120, t + .13);
+  g.gain.setValueAtTime(.22, t); g.gain.exponentialRampToValueAtTime(.001, t + .16);
+  o.connect(g).connect(a.destination); o.start(t); o.stop(t + .18);
+}
+function sfxDing(){
+  if (muted) return;
+  const a = ac(), t = a.currentTime + .06;
+  [880, 1320].forEach((f, i) => {
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = 'triangle'; o.frequency.value = f;
+    g.gain.setValueAtTime(0, t + i * .09);
+    g.gain.linearRampToValueAtTime(.13, t + i * .09 + .03);
+    g.gain.exponentialRampToValueAtTime(.001, t + i * .09 + .5);
+    o.connect(g).connect(a.destination); o.start(t + i * .09); o.stop(t + i * .09 + .55);
+  });
+}
+$('soundBtn').onclick = e => {
+  muted = !muted;
+  e.currentTarget.textContent = muted ? '🔇 静音' : '🔊 声音';
+};
+$('fullBtn').onclick = () => {
+  document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
+};
+
+/* =========================================================
+   4. 抽一个！
+   ========================================================= */
+let count = 0;
+function drawItem(x, y){
+  const it = pick(ITEMS);
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.innerHTML = `<div class="clay">${svgOf(it.icon)}</div><p>${it.text}</p><small>今天的小确幸</small>`;
+  el.style.left = clamp(x, 130, W - 130) + 'px';
+  el.style.top  = clamp(y, 110, H - 130) + 'px';
+  $('cards').appendChild(el);
+  sfxDing();
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 700); }, 4200);
+
+  count++;
+  $('count').textContent = count;
+
+  const strip = $('strip');
+  const em = strip.querySelector('.empty'); if (em) em.remove();
+  const ic = document.createElement('div');
+  ic.className = 'ic'; ic.title = it.text; ic.innerHTML = svgOf(it.icon);
+  strip.appendChild(ic);
+  while (strip.children.length > 9) strip.firstElementChild.remove();
+
+  $('tip').style.opacity = 0;
+}
+
+function popAt(x, y){
+  for (const b of bubbles){
+    if (b.dead) continue;
+    const r = b.r * (1 + 0.035);
+    if (Math.hypot(b.x - x, b.y - y) < r + 12){
+      b.dead = true;
+      b.respawn = performance.now() + rnd(2600, 4200);
+      burst(b.x, b.y, b.hue);
+      sfxPop();
+      drawItem(b.x, b.y);
+      return true;
+    }
+  }
+  return false;
+}
+
+/* =========================================================
+   5. 手势识别（MediaPipe HandLandmarker）
+   ========================================================= */
+const hand = { tip:null, thumb:null, index:null, pinching:false };
+let landmarker = null, lastVideoTime = -1;
+const video = $('cam');
+
+function setStatus(txt, cls){
+  $('status').textContent = txt;
+  $('dot').className = 'dot ' + cls;
+}
+
+const withTimeout = (p, ms, tag) =>
+  Promise.race([ p, new Promise((_, rej) => setTimeout(() => rej(new Error(tag + ' 超时')), ms)) ]);
+
+async function startCamera(){
+  const stream = await withTimeout(navigator.mediaDevices.getUserMedia({
+    video: { width:{ ideal:1280 }, height:{ ideal:720 }, facingMode:'user' }, audio:false
+  }), 12000, '摄像头');
+  video.srcObject = stream;
+  await video.play();
+  return stream;
+}
+
+/* 资源来源：优先本地 vendor/（离线可用），失败再走 CDN */
+const SOURCES = [
+  {
+    mod: 'vendor/vision_bundle.mjs',
+    wasm: 'vendor/wasm',
+    model: 'vendor/hand_landmarker.task'
+  },
+  {
+    mod: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs',
+    wasm: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm',
+    model: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
+  },
+  {
+    mod: 'https://registry.npmmirror.com/@mediapipe/tasks-vision/0.10.14/files/vision_bundle.mjs',
+    wasm: 'https://registry.npmmirror.com/@mediapipe/tasks-vision/0.10.14/files/wasm',
+    model: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
+  }
+];
+
+async function loadLandmarker(){
+  let lastErr;
+  for (const src of SOURCES){
+    try {
+      const mod = await withTimeout(import(src.mod), 20000, '引擎加载');
+      const fileset = await withTimeout(
+        mod.FilesetResolver.forVisionTasks(src.wasm), 25000, 'wasm 加载');
+      const opts = base => ({
+        baseOptions: { modelAssetPath: src.model, delegate: base },
+        runningMode: 'VIDEO', numHands: 1,
+        minHandDetectionConfidence: .5, minTrackingConfidence: .5
+      });
+      try {
+        return await withTimeout(mod.HandLandmarker.createFromOptions(fileset, opts('GPU')), 20000, '模型初始化');
+      } catch {
+        return await withTimeout(mod.HandLandmarker.createFromOptions(fileset, opts('CPU')), 25000, '模型初始化');
+      }
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('手势引擎加载失败');
+}
+
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+function toScreen(p){ return { x:(1 - p.x) * W, y:p.y * H }; }  // 镜像
+
+function detect(ts){
+  if (!landmarker || video.readyState < 2) return;
+  if (video.currentTime === lastVideoTime) return;
+  lastVideoTime = video.currentTime;
+  let res;
+  try { res = landmarker.detectForVideo(video, ts); } catch { return; }
+
+  hand.tip = hand.thumb = hand.index = null;
+  if (!res.landmarks.length){ hand.pinching = false; return; }
+
+  const lm = res.landmarks[0];
+  const thumb = toScreen(lm[4]), index = toScreen(lm[8]);
+  hand.thumb = thumb; hand.index = index;
+  hand.tip = { x:(thumb.x + index.x) / 2, y:(thumb.y + index.y) / 2 };
+
+  const ratio = dist(lm[4], lm[8]) / Math.max(dist(lm[0], lm[9]), 1e-4);
+  hand.pinching = hand.pinching ? ratio < .55 : ratio < .38;
+  if (hand.pinching) popAt(hand.tip.x, hand.tip.y);
+}
+
+/* 主循环 */
+let last = performance.now();
+function loop(ts){
+  requestAnimationFrame(loop);
+  const dt = Math.min((ts - last) / 1000, .05); last = ts;
+  detect(ts);
+  update(dt, ts);
+  draw(ts);
+}
+requestAnimationFrame(loop);
+
+/* =========================================================
+   6. 启动 & 兜底（鼠标模式）
+   ========================================================= */
+function mouseMode(msg){
+  setStatus(msg || '鼠标模式：点泡泡也能抽', 'off');
+  $('tip').innerHTML = '点一下泡泡 <b>啪</b> 一声，抽一件今天的小事';
+  cv.style.pointerEvents = 'auto';
+  cv.addEventListener('pointerdown', e => {
+    hand.tip = { x:e.clientX, y:e.clientY };
+    popAt(e.clientX, e.clientY);
+  });
+  cv.addEventListener('pointermove', e => { hand.tip = { x:e.clientX, y:e.clientY }; });
+}
+
+$('mouseBtn').onclick = () => { $('gate').remove(); mouseMode(); };
+
+$('startBtn').onclick = async () => {
+  const err = $('err'), btn = $('startBtn');
+  btn.disabled = true; btn.textContent = '① 等你点「允许」摄像头…'; err.textContent = '';
+
+  // 总看门狗：45 秒还没就绪就自动切鼠标模式，绝不卡死
+  const watchdog = setTimeout(() => {
+    if (!landmarker && document.body.contains($('gate') || btn)) {
+      try { $('gate').remove(); } catch {}
+      mouseMode('手势加载超时 · 鼠标模式');
+      sfxPop();
+    }
+  }, 45000);
+
+  try {
+    await startCamera();
+    btn.textContent = '② 正在加载手势引擎…';
+    setStatus('加载手势引擎…', 'off');
+    landmarker = await loadLandmarker();
+    clearTimeout(watchdog);
+    setStatus('捏一下泡泡试试', 'on');
+    $('gate').remove();
+    try { ac(); } catch {}
+  } catch (e) {
+    console.error(e);
+    clearTimeout(watchdog);
+    // 摄像头或模型加载失败 → 自动降级为鼠标模式，保证还能玩
+    $('gate').remove();
+    mouseMode('手势不可用 · 鼠标模式');
+    sfxPop();
+  }
+};
+
+// file:// 直开会限制摄像头/模块加载，给出提示
+if (location.protocol === 'file:') {
+  $('err').innerHTML = '当前是直接双击打开的（file:// 模式），浏览器可能拦截摄像头。<br>建议：双击目录里的 <b>「开始盲盒.bat」</b>，它会自动开好服务器并打开页面。';
+}
+
+// 页面隐藏时关掉摄像头省电
+document.addEventListener('visibilitychange', () => {
+  const s = video.srcObject; if (!s) return;
+  s.getTracks().forEach(t => t.enabled = !document.hidden);
+});
+</script>
+</body>
+</html>
